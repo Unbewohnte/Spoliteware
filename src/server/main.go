@@ -13,6 +13,7 @@ THE SOFTWARE IS PROVIDED “AS IS”, WITHOUT WARRANTY OF ANY KIND, EXPRESS OR I
 package main
 
 import (
+	"Unbewohnte/spolitewareServer/thanks"
 	"encoding/json"
 	"flag"
 	"fmt"
@@ -31,14 +32,15 @@ type Data struct {
 	System   map[string]string `json:"system"`
 }
 
-const Version string = "server v0.1.0"
+const Version string = "server v0.1.1"
 
 var (
-	version  *bool   = flag.Bool("version", false, "Print version information and exit")
-	port     *uint   = flag.Uint("port", 13370, "Set port to listen on")
-	keyFile  *string = flag.String("key", "", "SSL private key file path")
-	certFile *string = flag.String("cert", "", "SSL certificate file path")
-	verbose  *bool   = flag.Bool("verbose", false, "Print user data-centric messages or not")
+	version       *bool   = flag.Bool("version", false, "Print version information and exit")
+	port          *uint   = flag.Uint("port", 13370, "Set port to listen on")
+	keyFile       *string = flag.String("key", "", "SSL private key file path")
+	certFile      *string = flag.String("cert", "", "SSL certificate file path")
+	verbose       *bool   = flag.Bool("verbose", false, "Print user data-centric messages or not")
+	thanksdirName *string = flag.String("thanksdirname", "thanksdir", "Select the NAME of the thanks directory with thanks files")
 )
 
 func main() {
@@ -71,6 +73,8 @@ func main() {
 		fmt.Printf("[ERROR] Failed to create data directory: %s\n", err)
 		return
 	}
+
+	thanksdir := filepath.Join(filepath.Dir(executablePath), *thanksdirName)
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("/", func(w http.ResponseWriter, req *http.Request) {
@@ -147,7 +151,14 @@ func main() {
 			return
 		}
 
-		w.WriteHeader(http.StatusOK)
+		// Send thanks
+		thanksStr, err := thanks.GetRandom(thanksdir)
+		if err != nil {
+			w.Write([]byte(thanks.Default()))
+		} else {
+			w.Write([]byte(thanksStr))
+		}
+
 		if *verbose {
 			fmt.Printf("[INFO] Received data from %s_%s_%s\n", clientData.Hostname, clientData.Username, ip)
 		}

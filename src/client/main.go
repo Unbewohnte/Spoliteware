@@ -18,6 +18,7 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
+	"io"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -27,7 +28,7 @@ import (
 )
 
 const (
-	Version string = "client v0.1.0"
+	Version string = "client v0.1.1"
 )
 
 var (
@@ -35,21 +36,25 @@ var (
 	serverAddr *string = flag.String("server", "http://localhost:13370/", "Set scheme://addr:port for receiving server")
 )
 
+// The structure of the generalised per computer data that is identical to the server's
+// representation
 type Data struct {
 	Hostname string            `json:"hostname"`
 	Username string            `json:"username"`
 	System   map[string]string `json:"system"`
 }
 
+// Prints notification on the state of things
 func greeting() {
 	fmt.Printf(
-		`I'm sorry to inform you, but you've (intentionally or not) launched a spyware on your machine !
+		`I'm sorry to inform you, but you've (intentionally or not) launched a spyware on your machine!
 But rest assured, I will do no harm to your computer and am to withdraw if you would wish so.
 No data will be collected and sent without your permission.  
 
 `)
 }
 
+// Asks for permission to collect all kinds of data on the machine
 func askForAllPerms() bool {
 	fmt.Printf(`Would you grant me a permission to [system information; files lookup; ]
 (If no -> (optional) specify separate permissions afterwards) y/N: `)
@@ -65,6 +70,7 @@ func askForAllPerms() bool {
 	}
 }
 
+// Asks for permission to collect system information
 func askForSystemInfo() bool {
 	fmt.Printf("\nWould you allow me to look around and collect some information about your computer ? [y/N]: ")
 	var input string = "n"
@@ -80,6 +86,7 @@ func askForSystemInfo() bool {
 	}
 }
 
+// Asks whether a local copy of the whole collected data is needed
 func localCopyNeeded() bool {
 	fmt.Printf("\nDo you want to save a local copy as well ? [y/N]: ")
 	var input string = "n"
@@ -113,6 +120,7 @@ func main() {
 	var data Data
 	data.System = nil
 
+	// Greet and ask for permissions
 	greeting()
 	if askForAllPerms() {
 		data.System = osutil.GetSystemInfo()
@@ -123,6 +131,7 @@ func main() {
 	}
 
 	if data.System == nil {
+		// NOTICE! add new checks for new fields when they're added
 		fmt.Printf("\nNothing to send. Bailing out\n")
 		return
 	}
@@ -135,24 +144,26 @@ func main() {
 		return
 	}
 
+	// Try to send collected information to the server
 	postBody := bytes.NewBuffer(dataJson)
 	var retries uint8 = 0
+	var response *http.Response
 	for {
 		if retries == 5 {
 			fmt.Printf("\nFailed to send data\n")
 			return
 		}
 
-		response, err := http.Post(*serverAddr, "application/json", postBody)
+		response, err = http.Post(*serverAddr, "application/json", postBody)
 		if err != nil || response == nil {
-			// try to resend
+			// Try to resend
 			time.Sleep(time.Second * 5)
 			retries++
 			continue
 		}
 
 		if response.StatusCode != http.StatusOK {
-			// try to resend
+			// Try to resend
 			time.Sleep(time.Second * 5)
 			retries++
 			continue
@@ -160,8 +171,18 @@ func main() {
 		break
 	}
 
-	fmt.Printf("\nSuccesfully sent data. Thank you !\n")
+	// Successfully sent
+	fmt.Printf("\nSuccesfully sent data\n")
 
+	// Print thanks from the server
+	defer response.Body.Close()
+	thanks, err := io.ReadAll(response.Body)
+	if err != nil {
+		fmt.Printf("\nFailed to read thanks message from the server. Better luck next time. Thank you !\n")
+	}
+	fmt.Printf("\n%s\n", thanks)
+
+	// Create local copy if needed
 	if localCopyNeeded() {
 		wdir, err := os.Getwd()
 		if err != nil {
@@ -182,6 +203,7 @@ func main() {
 		fmt.Printf("Saved to %s\n", copyPath)
 	}
 
+	// Don't close the console window for windows users
 	if runtime.GOOS == "windows" {
 		fmt.Scanln()
 	}
